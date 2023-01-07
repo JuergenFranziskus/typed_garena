@@ -92,6 +92,12 @@ impl<T> Arena<T> {
             index: 0,
         }
     }
+    pub fn indices(&self) -> Indices<T> {
+        let items = self.iter();
+        Indices {
+            items
+        }
+    }
 }
 impl<T> Index<ID<T>> for Arena<T> {
     type Output = T;
@@ -246,7 +252,16 @@ impl<T> DoubleEndedIterator for IntoIter<T> {
     }
 }
 
-
+pub struct Indices<'a, T> {
+    items: Iter<'a, T>,
+}
+impl<'a, T> Iterator for Indices<'a, T> {
+    type Item = ID<T>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.items.next()
+            .map(|(i, _)| i)
+    }
+}
 
 pub struct ID<T> {
     index: usize,
