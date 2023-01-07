@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::{Index, IndexMut}, hash::Hash, mem::replace};
+use std::{marker::PhantomData, ops::{Index, IndexMut}, hash::Hash, mem::replace, fmt::Debug, any::type_name};
 
 pub type Generation = u32;
 
@@ -314,5 +314,11 @@ impl<T> Hash for ID<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.index.hash(state);
         self.generation.hash(state);
+    }
+}
+impl<T> Debug for ID<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let type_name = type_name::<T>();
+        write!(f, "ID<{}>({}, {})", type_name, self.index, self.generation)
     }
 }
