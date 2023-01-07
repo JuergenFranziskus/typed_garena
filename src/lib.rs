@@ -24,20 +24,28 @@ impl<T> Arena<T> {
         self.len() == 0
     }
 
-    pub fn insert(&mut self, item: T) -> ID<T> {
+    pub fn insert(&mut self, t: T) -> ID<T> {
+        self.insert_with_id(|_| t)
+    }    
+    pub fn insert_with_id<F>(&mut self, f: F) -> ID<T>
+        where
+            F: FnOnce(ID<T>) -> T
+    {
         let id = if let Some(free) = self.free_list_head.take() {
             let &Entry::Free { next_generation, next_free } = &self.entries[free] else { unreachable!() };
             self.free_list_head = next_free;
             
-            self.entries[free] = Entry::Occupied(next_generation, item);
             ID::new(free, next_generation)
         }
         else {
             let index = self.entries.len();
-            self.entries.push(Entry::Occupied(0, item));
+            self.entries.push(Entry::Free {next_generation: 0, next_free: None});
             ID::new(index, 0)
         };
         self.length += 1;
+
+        let item = f(id);
+        self.entries[id.index] = Entry::Occupied(id.generation, item);
 
         id
     }
@@ -48,6 +56,8 @@ impl<T> Arena<T> {
 
         let new_entry = Entry::Free { next_free: self.free_list_head, next_generation: id.generation + 1 };
         let old_entry = std::mem::replace(&mut self.entries[id.index], new_entry);
+
+        self.free_list_head = Some(id.index);
 
         let Entry::Occupied(_, item) = old_entry else { unreachable!() };
         self.length -= 1;
