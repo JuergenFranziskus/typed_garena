@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::{Index, IndexMut}, hash::Hash, mem::replace, fmt::Debug, any::type_name};
+use std::{ops::{Index, IndexMut}, hash::Hash, mem::replace, fmt::Debug};
 
 pub type Generation = u32;
 
@@ -24,12 +24,12 @@ impl<T> Arena<T> {
         self.len() == 0
     }
 
-    pub fn insert(&mut self, t: T) -> ID<T> {
+    pub fn insert(&mut self, t: T) -> ID {
         self.insert_with_id(|_| t)
     }    
-    pub fn insert_with_id<F>(&mut self, f: F) -> ID<T>
+    pub fn insert_with_id<F>(&mut self, f: F) -> ID
         where
-            F: FnOnce(ID<T>) -> T
+            F: FnOnce(ID) -> T
     {
         let id = if let Some(free) = self.free_list_head.take() {
             let &Entry::Free { next_generation, next_free } = &self.entries[free] else { unreachable!() };
@@ -49,7 +49,7 @@ impl<T> Arena<T> {
 
         id
     }
-    pub fn remove(&mut self, id: ID<T>) -> Option<T> {
+    pub fn remove(&mut self, id: ID) -> Option<T> {
         if !self.contains(id) {
             return None;
         }
@@ -64,7 +64,7 @@ impl<T> Arena<T> {
         Some(item)
     }
 
-    pub fn get(&self, id: ID<T>) -> Option<&T> {
+    pub fn get(&self, id: ID) -> Option<&T> {
         let Some(entry) = self.entries.get(id.index) else { return None };
         let Entry::Occupied(gen, item) = entry else { return None };
 
@@ -75,7 +75,7 @@ impl<T> Arena<T> {
             Some(item)
         }
     }
-    pub fn get_mut(&mut self, id: ID<T>) -> Option<&mut T> {
+    pub fn get_mut(&mut self, id: ID) -> Option<&mut T> {
         let Some(entry) = self.entries.get_mut(id.index) else { return None };
         let Entry::Occupied(gen, item) = entry else { return None };
 
@@ -86,7 +86,7 @@ impl<T> Arena<T> {
             Some(item)
         }
     }
-    pub fn contains(&self, id: ID<T>) -> bool {
+    pub fn contains(&self, id: ID) -> bool {
         self.get(id).is_some()
     }
 
@@ -109,14 +109,14 @@ impl<T> Arena<T> {
         }
     }
 }
-impl<T> Index<ID<T>> for Arena<T> {
+impl<T> Index<ID> for Arena<T> {
     type Output = T;
-    fn index(&self, index: ID<T>) -> &Self::Output {
+    fn index(&self, index: ID) -> &Self::Output {
         self.get(index).unwrap()
     }
 }
-impl<T> IndexMut<ID<T>> for Arena<T> {
-    fn index_mut(&mut self, index: ID<T>) -> &mut Self::Output {
+impl<T> IndexMut<ID> for Arena<T> {
+    fn index_mut(&mut self, index: ID) -> &mut Self::Output {
         self.get_mut(index).unwrap()
     }
 }
@@ -132,14 +132,14 @@ impl<T> IntoIterator for Arena<T> {
 }
 impl<'a, T> IntoIterator for &'a Arena<T> {
     type IntoIter = Iter<'a, T>;
-    type Item = (ID<T>, &'a T);
+    type Item = (ID, &'a T);
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
 }
 impl<'a, T> IntoIterator for &'a mut Arena<T> {
     type IntoIter = IterMut<'a, T>;
-    type Item = (ID<T>, &'a mut T);
+    type Item = (ID, &'a mut T);
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
     }
@@ -160,7 +160,7 @@ pub struct Iter<'a, T> {
     index: usize,
 }
 impl<'a, T> Iterator for Iter<'a, T> {
-    type Item = (ID<T>, &'a T);
+    type Item = (ID, &'a T);
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match replace(&mut self.entries, &[]) {
@@ -200,7 +200,7 @@ pub struct IterMut<'a, T> {
     index: usize,
 }
 impl<'a, T> Iterator for IterMut<'a, T> {
-    type Item = (ID<T>, &'a mut T);
+    type Item = (ID, &'a mut T);
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match replace(&mut self.entries, &mut []) {
@@ -266,24 +266,23 @@ pub struct Indices<'a, T> {
     items: Iter<'a, T>,
 }
 impl<'a, T> Iterator for Indices<'a, T> {
-    type Item = ID<T>;
+    type Item = ID;
     fn next(&mut self) -> Option<Self::Item> {
         self.items.next()
             .map(|(i, _)| i)
     }
 }
 
-pub struct ID<T> {
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ID {
     index: usize,
     generation: Generation,
-    _phantom: PhantomData<T>,
 }
-impl<T> ID<T> {
+impl ID {
     fn new(index: usize, generation: Generation) -> Self {
         Self {
             index,
             generation,
-            _phantom: PhantomData,
         }
     }
 
@@ -294,31 +293,4 @@ impl<T> ID<T> {
         self.generation
     }
 }
-impl<T> Copy for ID<T> {}
-impl<T> Clone for ID<T> {
-    fn clone(&self) -> Self {
-        Self {
-            index: self.index,
-            generation: self.generation,
-            _phantom: PhantomData,
-        }
-    }
-}
-impl<T> PartialEq for ID<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.index == other.index && self.generation == other.generation
-    }
-}
-impl<T> Eq for ID<T> {}
-impl<T> Hash for ID<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.index.hash(state);
-        self.generation.hash(state);
-    }
-}
-impl<T> Debug for ID<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let type_name = type_name::<T>();
-        write!(f, "ID<{}>({}, {})", type_name, self.index, self.generation)
-    }
-}
+
