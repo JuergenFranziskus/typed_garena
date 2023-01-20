@@ -1,4 +1,9 @@
-use std::{ops::{Index, IndexMut}, hash::Hash, mem::replace, fmt::Debug};
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+    mem::replace,
+    ops::{Index, IndexMut},
+};
 
 pub type Generation = u32;
 
@@ -26,20 +31,22 @@ impl<T> Arena<T> {
 
     pub fn insert(&mut self, t: T) -> ID {
         self.insert_with_id(|_| t)
-    }    
+    }
     pub fn insert_with_id<F>(&mut self, f: F) -> ID
-        where
-            F: FnOnce(ID) -> T
+    where
+        F: FnOnce(ID) -> T,
     {
         let id = if let Some(free) = self.free_list_head.take() {
             let &Entry::Free { next_generation, next_free } = &self.entries[free] else { unreachable!() };
             self.free_list_head = next_free;
-            
+
             ID::new(free, next_generation)
-        }
-        else {
+        } else {
             let index = self.entries.len();
-            self.entries.push(Entry::Free {next_generation: 0, next_free: None});
+            self.entries.push(Entry::Free {
+                next_generation: 0,
+                next_free: None,
+            });
             ID::new(index, 0)
         };
         self.length += 1;
@@ -54,7 +61,10 @@ impl<T> Arena<T> {
             return None;
         }
 
-        let new_entry = Entry::Free { next_free: self.free_list_head, next_generation: id.generation + 1 };
+        let new_entry = Entry::Free {
+            next_free: self.free_list_head,
+            next_generation: id.generation + 1,
+        };
         let old_entry = std::mem::replace(&mut self.entries[id.index], new_entry);
 
         self.free_list_head = Some(id.index);
@@ -70,8 +80,7 @@ impl<T> Arena<T> {
 
         if id.generation != *gen {
             None
-        }
-        else {
+        } else {
             Some(item)
         }
     }
@@ -81,8 +90,7 @@ impl<T> Arena<T> {
 
         if id.generation != *gen {
             None
-        }
-        else {
+        } else {
             Some(item)
         }
     }
@@ -104,9 +112,7 @@ impl<T> Arena<T> {
     }
     pub fn indices(&self) -> Indices<T> {
         let items = self.iter();
-        Indices {
-            items
-        }
+        Indices { items }
     }
 }
 impl<T> Index<ID> for Arena<T> {
@@ -125,9 +131,7 @@ impl<T> IntoIterator for Arena<T> {
     type Item = T;
     fn into_iter(self) -> Self::IntoIter {
         let entries = self.entries.into_iter();
-        IntoIter {
-            entries
-        }
+        IntoIter { entries }
     }
 }
 impl<'a, T> IntoIterator for &'a Arena<T> {
@@ -154,7 +158,6 @@ enum Entry<T> {
     Occupied(Generation, T),
 }
 
-
 pub struct Iter<'a, T> {
     entries: &'a [Entry<T>],
     index: usize,
@@ -172,7 +175,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
                     if let Entry::Occupied(gen, t) = first {
                         let id = ID::new(index, *gen);
-                        return Some((id, t))
+                        return Some((id, t));
                     }
                 }
             }
@@ -189,7 +192,7 @@ impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
 
             if let Entry::Occupied(gen, t) = last {
                 let id = ID::new(index, *gen);
-                return Some((id, t))
+                return Some((id, t));
             }
         }
     }
@@ -212,7 +215,7 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
                     if let Entry::Occupied(gen, t) = first {
                         let id = ID::new(index, *gen);
-                        return Some((id, t))
+                        return Some((id, t));
                     }
                 }
             }
@@ -229,12 +232,11 @@ impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
 
             if let Entry::Occupied(gen, t) = last {
                 let id = ID::new(index, *gen);
-                return Some((id, t))
+                return Some((id, t));
             }
         }
     }
 }
-
 
 pub struct IntoIter<T> {
     entries: std::vec::IntoIter<Entry<T>>,
@@ -246,7 +248,7 @@ impl<T> Iterator for IntoIter<T> {
         loop {
             let entry = self.entries.next()?;
             if let Entry::Occupied(_, t) = entry {
-                return Some(t)
+                return Some(t);
             }
         }
     }
@@ -268,8 +270,7 @@ pub struct Indices<'a, T> {
 impl<'a, T> Iterator for Indices<'a, T> {
     type Item = ID;
     fn next(&mut self) -> Option<Self::Item> {
-        self.items.next()
-            .map(|(i, _)| i)
+        self.items.next().map(|(i, _)| i)
     }
 }
 
@@ -280,10 +281,7 @@ pub struct ID {
 }
 impl ID {
     fn new(index: usize, generation: Generation) -> Self {
-        Self {
-            index,
-            generation,
-        }
+        Self { index, generation }
     }
 
     pub fn index(&self) -> usize {
@@ -293,4 +291,12 @@ impl ID {
         self.generation
     }
 }
-
+impl Display for ID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.generation == 0 {
+            write!(f, "{}", self.index)
+        } else {
+            write!(f, "({}-{})", self.index, self.generation)
+        }
+    }
+}
